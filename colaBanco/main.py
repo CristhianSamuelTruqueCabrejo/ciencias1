@@ -4,6 +4,7 @@ import random
 import threading
 import time
 from queue import Queue
+import math
 
 class Nodo:
     def __init__(self, dato, es_cajero=False):
@@ -28,7 +29,7 @@ class ColaBancoCircular:
         if transacciones is None:
             transacciones = random.randint(1, 15)  # 1-15 transacciones aleatorias
         
-        nuevo_cliente = Nodo(f"ID: {id_cliente} - Transacciones: {transacciones}")
+        nuevo_cliente = Nodo(f"ID: {id_cliente} - T: {transacciones}")
         
         if self.cabeza == self.cajero and self.cajero.siguiente == self.cajero:
             self.cajero.siguiente = nuevo_cliente
@@ -94,6 +95,207 @@ class ColaBancoCircular:
             actual = actual.siguiente
         return cola
 
+class VisualizadorColaCircular:
+    def __init__(self, root, cola_banco, event_queue):
+        self.root = root
+        self.root.title("Visualización Interactiva - Cola Circular del Banco")
+        self.root.geometry("900x700")
+        
+        self.cola_banco = cola_banco
+        self.event_queue = event_queue
+        self.running = True
+        
+        self.canvas = tk.Canvas(self.root, width=880, height=600, bg="white")
+        self.canvas.pack(pady=10)
+        
+        # Frame para controles
+        frame_controles = ttk.Frame(self.root)
+        frame_controles.pack(pady=10)
+        
+        ttk.Button(frame_controles, text="Actualizar Vista", 
+                  command=self.dibujar_cola).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(frame_controles, text="Agregar Cliente Manual", 
+                  command=self.agregar_cliente_manual).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(frame_controles, text="Atender Cliente", 
+                  command=self.atender_cliente_manual).pack(side=tk.LEFT, padx=5)
+        
+        # Información
+        self.info_label = ttk.Label(self.root, text="", font=("Arial", 10))
+        self.info_label.pack(pady=5)
+        
+        # Iniciar thread de actualización automática
+        self.update_thread = threading.Thread(target=self.actualizacion_automatica, daemon=True)
+        self.update_thread.start()
+        
+        self.dibujar_cola()
+        
+        # Procesar cola de eventos
+        self.process_queue()
+        
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+    
+    def actualizacion_automatica(self):
+        """Thread para actualizar la visualización automáticamente"""
+        while self.running:
+            time.sleep(0.5)  # Actualizar cada 500ms
+            if not self.running:
+                break
+                
+            # Forzar actualización en el hilo principal de Tkinter
+            self.root.after(0, self.dibujar_cola)
+    
+    def process_queue(self):
+        """Procesar eventos de la cola para actualizaciones en tiempo real"""
+        try:
+            while not self.event_queue.empty():
+                event_type, message = self.event_queue.get_nowait()
+                
+                if event_type == "actualizar_visualizacion":
+                    self.dibujar_cola()
+                
+        except:
+            pass
+        
+        # Programar siguiente verificación
+        if self.running:
+            self.root.after(100, self.process_queue)
+    
+    def dibujar_cola(self):
+        self.canvas.delete("all")
+        
+        centro_x, centro_y = 440, 300
+        radio = 200
+        
+        # Dibujar círculo base
+        self.canvas.create_oval(centro_x - radio, centro_y - radio, 
+                               centro_x + radio, centro_y + radio, 
+                               outline="gray", dash=(2, 2), width=2)
+        
+        # Obtener elementos de la cola
+        elementos = ["CAJERO"] + self.cola_banco.obtener_cola()
+        
+        if len(elementos) == 1:  # Solo el cajero
+            self.dibujar_nodo(centro_x, centro_y, elementos[0], es_cajero=True)
+            self.info_label.config(text="Solo hay cajero en la cola")
+            return
+        
+        # Calcular posiciones en círculo
+        angulo_paso = 2 * math.pi / len(elementos)
+        
+        for i, elemento in enumerate(elementos):
+            angulo = i * angulo_paso
+            x = centro_x + radio * math.cos(angulo)
+            y = centro_y + radio * math.sin(angulo)
+            
+            es_cajero = (elemento == "CAJERO")
+            self.dibujar_nodo(x, y, elemento, es_cajero)
+            
+            # Dibujar flecha al siguiente nodo
+            if i < len(elementos) - 1:
+                angulo_sig = (i + 1) * angulo_paso
+                x_sig = centro_x + radio * math.cos(angulo_sig)
+                y_sig = centro_y + radio * math.sin(angulo_sig)
+                self.dibujar_flecha(x, y, x_sig, y_sig)
+            elif len(elementos) > 1:  # Flecha del último al primero (cajero)
+                angulo_sig = 0
+                x_sig = centro_x + radio * math.cos(angulo_sig)
+                y_sig = centro_y + radio * math.sin(angulo_sig)
+                self.dibujar_flecha(x, y, x_sig, y_sig)
+        
+        self.info_label.config(text=f"Elementos en cola: {len(elementos) - 1} | Total: {len(elementos)} | Atendidos: {self.cola_banco.clientes_atendidos}")
+    
+    def dibujar_nodo(self, x, y, texto, es_cajero=False):
+        ancho, alto = 120, 60
+        
+        if es_cajero:
+            color = "lightgreen"
+            texto = "CAJERO"
+        else:
+            color = "lightblue"
+            # Acortar texto para que quepa
+            if len(texto) > 20:
+                texto = texto[:17] + "..."
+        
+        # Dibujar rectángulo del nodo
+        self.canvas.create_rectangle(x - ancho/2, y - alto/2, 
+                                   x + ancho/2, y + alto/2, 
+                                   fill=color, outline="black", width=2)
+        
+        # Dibujar texto
+        self.canvas.create_text(x, y, text=texto, font=("Arial", 8), width=ancho - 10)
+        
+        # Indicador especial para cajero
+        if es_cajero:
+            self.canvas.create_text(x, y - alto/2 - 10, text="INICIO", 
+                                  font=("Arial", 9, "bold"), fill="red")
+    
+    def dibujar_flecha(self, x1, y1, x2, y2):
+        # Calcular dirección y ajustar puntos para que salgan del borde del nodo
+        dx, dy = x2 - x1, y2 - y1
+        distancia = math.sqrt(dx*dx + dy*dy)
+        
+        if distancia == 0:
+            return
+            
+        # Puntos ajustados para que conecten en los bordes
+        factor1 = 60 / distancia  # Radio del nodo
+        factor2 = 60 / distancia
+        
+        x1_adj = x1 + dx * factor1
+        y1_adj = y1 + dy * factor1
+        x2_adj = x2 - dx * factor2
+        y2_adj = y2 - dy * factor2
+        
+        # Dibujar línea
+        self.canvas.create_line(x1_adj, y1_adj, x2_adj, y2_adj, 
+                               arrow=tk.LAST, width=2, fill="red")
+    
+    def agregar_cliente_manual(self):
+        # Ventana simple para agregar cliente
+        dialogo = tk.Toplevel(self.root)
+        dialogo.title("Agregar Cliente")
+        dialogo.geometry("300x150")
+        dialogo.transient(self.root)
+        dialogo.grab_set()
+        
+        ttk.Label(dialogo, text="ID del Cliente:").pack(pady=5)
+        id_entry = ttk.Entry(dialogo)
+        id_entry.pack(pady=5)
+        
+        ttk.Label(dialogo, text="Transacciones:").pack(pady=5)
+        trans_entry = ttk.Entry(dialogo)
+        trans_entry.pack(pady=5)
+        
+        def agregar():
+            try:
+                id_cliente = int(id_entry.get())
+                transacciones = int(trans_entry.get())
+                mensaje = self.cola_banco.agregar_cliente(id_cliente, transacciones)
+                self.event_queue.put(("nuevo_cliente", mensaje))
+                self.event_queue.put(("actualizar_visualizacion", ""))
+                self.dibujar_cola()
+                dialogo.destroy()
+            except ValueError:
+                messagebox.showerror("Error", "Por favor ingrese números válidos")
+        
+        ttk.Button(dialogo, text="Agregar", command=agregar).pack(pady=10)
+    
+    def atender_cliente_manual(self):
+        cliente, mensaje = self.cola_banco.atender_cliente()
+        if cliente:
+            self.event_queue.put(("atencion", mensaje))
+            self.event_queue.put(("actualizar_visualizacion", ""))
+            messagebox.showinfo("Atención", mensaje)
+        else:
+            messagebox.showinfo("Atención", mensaje)
+        self.dibujar_cola()
+    
+    def on_close(self):
+        self.running = False
+        self.root.destroy()
+
 class BancoApp:
     def __init__(self, root):
         self.root = root
@@ -114,6 +316,10 @@ class BancoApp:
         
         self.stop_btn = ttk.Button(frame_controles, text="Detener Simulación", command=self.detener_simulacion, state=tk.DISABLED)
         self.stop_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Botón para abrir visualización
+        self.viz_btn = ttk.Button(frame_controles, text="Abrir Visualización", command=self.abrir_visualizacion)
+        self.viz_btn.pack(side=tk.LEFT, padx=5)
         
         # Frame para estadísticas
         frame_stats = ttk.LabelFrame(root, text="Estadísticas", padding=10)
@@ -156,6 +362,20 @@ class BancoApp:
         self.actualizar_cola()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.process_queue()
+        
+        # Referencia a la ventana de visualización
+        self.ventana_visualizacion = None
+    
+    def abrir_visualizacion(self):
+        if self.ventana_visualizacion is None or not self.ventana_visualizacion.winfo_exists():
+            nueva_ventana = tk.Toplevel(self.root)
+            self.ventana_visualizacion = VisualizadorColaCircular(nueva_ventana, self.cola, self.event_queue)
+            nueva_ventana.protocol("WM_DELETE_WINDOW", lambda: self.cerrar_visualizacion())
+        else:
+            self.ventana_visualizacion.root.lift()
+    
+    def cerrar_visualizacion(self):
+        self.ventana_visualizacion = None
     
     def iniciar_simulacion(self):
         self.running = True
@@ -175,12 +395,13 @@ class BancoApp:
     
     def llegada_clientes(self):
         while self.running:
-            time.sleep(2)  # Cada 4 segundos
+            time.sleep(2)  # Cada 2 segundos
             if not self.running:
                 break
                 
             mensaje = self.cola.agregar_cliente(self.id_cliente)
             self.event_queue.put(("nuevo_cliente", mensaje))
+            self.event_queue.put(("actualizar_visualizacion", ""))
             self.id_cliente += 1
     
     def atencion_clientes(self):
@@ -191,6 +412,7 @@ class BancoApp:
                 
             cliente, mensaje = self.cola.atender_cliente()
             self.event_queue.put(("atencion", mensaje))
+            self.event_queue.put(("actualizar_visualizacion", ""))
     
     def process_queue(self):
         while not self.event_queue.empty():
