@@ -96,13 +96,13 @@ class ColaBancoCircular:
         return cola
 
 class VisualizadorColaCircular:
-    def __init__(self, root, cola_banco, event_queue):
+    def __init__(self, root, cola_banco, main_app):
         self.root = root
         self.root.title("Visualización Interactiva - Cola Circular del Banco")
         self.root.geometry("900x700")
         
         self.cola_banco = cola_banco
-        self.event_queue = event_queue
+        self.main_app = main_app
         self.running = True
         
         self.canvas = tk.Canvas(self.root, width=880, height=600, bg="white")
@@ -113,7 +113,7 @@ class VisualizadorColaCircular:
         frame_controles.pack(pady=10)
         
         ttk.Button(frame_controles, text="Actualizar Vista", 
-                  command=self.dibujar_cola).pack(side=tk.LEFT, padx=5)
+                  command=self.actualizar_ambas_interfaces).pack(side=tk.LEFT, padx=5)
         
         ttk.Button(frame_controles, text="Agregar Cliente Manual", 
                   command=self.agregar_cliente_manual).pack(side=tk.LEFT, padx=5)
@@ -131,36 +131,22 @@ class VisualizadorColaCircular:
         
         self.dibujar_cola()
         
-        # Procesar cola de eventos
-        self.process_queue()
-        
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
     
     def actualizacion_automatica(self):
         """Thread para actualizar la visualización automáticamente"""
         while self.running:
-            time.sleep(0.5)  # Actualizar cada 500ms
+            time.sleep(0.3)  # Actualizar cada 300ms para mayor fluidez
             if not self.running:
                 break
                 
             # Forzar actualización en el hilo principal de Tkinter
             self.root.after(0, self.dibujar_cola)
     
-    def process_queue(self):
-        """Procesar eventos de la cola para actualizaciones en tiempo real"""
-        try:
-            while not self.event_queue.empty():
-                event_type, message = self.event_queue.get_nowait()
-                
-                if event_type == "actualizar_visualizacion":
-                    self.dibujar_cola()
-                
-        except:
-            pass
-        
-        # Programar siguiente verificación
-        if self.running:
-            self.root.after(100, self.process_queue)
+    def actualizar_ambas_interfaces(self):
+        """Actualiza tanto la visualización como la interfaz principal"""
+        self.dibujar_cola()
+        self.main_app.actualizar_interfaz_completa()
     
     def dibujar_cola(self):
         self.canvas.delete("all")
@@ -178,7 +164,7 @@ class VisualizadorColaCircular:
         
         if len(elementos) == 1:  # Solo el cajero
             self.dibujar_nodo(centro_x, centro_y, elementos[0], es_cajero=True)
-            self.info_label.config(text="Solo hay cajero en la cola")
+            self.info_label.config(text="Solo hay cajero en la cola | Atendidos: 0")
             return
         
         # Calcular posiciones en círculo
@@ -192,17 +178,19 @@ class VisualizadorColaCircular:
             es_cajero = (elemento == "CAJERO")
             self.dibujar_nodo(x, y, elemento, es_cajero)
             
-            # Dibujar flecha al siguiente nodo
+            # Dibujar flecha desde el nodo actual al siguiente (sentido contrario - horario)
             if i < len(elementos) - 1:
+                # Flecha del nodo actual al siguiente
                 angulo_sig = (i + 1) * angulo_paso
                 x_sig = centro_x + radio * math.cos(angulo_sig)
                 y_sig = centro_y + radio * math.sin(angulo_sig)
-                self.dibujar_flecha(x, y, x_sig, y_sig)
-            elif len(elementos) > 1:  # Flecha del último al primero (cajero)
-                angulo_sig = 0
-                x_sig = centro_x + radio * math.cos(angulo_sig)
-                y_sig = centro_y + radio * math.sin(angulo_sig)
-                self.dibujar_flecha(x, y, x_sig, y_sig)
+                self.dibujar_flecha(x_sig, y_sig, x, y)  # Invertido: desde siguiente a actual
+            elif len(elementos) > 1:  # Flecha del último nodo al cajero (primero)
+                # Flecha del último nodo al cajero
+                angulo_primero = 0
+                x_primero = centro_x + radio * math.cos(angulo_primero)
+                y_primero = centro_y + radio * math.sin(angulo_primero)
+                self.dibujar_flecha(x_primero, y_primero, x, y)  # Invertido: desde cajero a último
         
         self.info_label.config(text=f"Elementos en cola: {len(elementos) - 1} | Total: {len(elementos)} | Atendidos: {self.cola_banco.clientes_atendidos}")
     
@@ -232,7 +220,11 @@ class VisualizadorColaCircular:
                                   font=("Arial", 9, "bold"), fill="red")
     
     def dibujar_flecha(self, x1, y1, x2, y2):
-        # Calcular dirección y ajustar puntos para que salgan del borde del nodo
+        """
+        Dibuja una flecha desde (x1, y1) hacia (x2, y2)
+        Ahora las flechas van en sentido horario: del nodo siguiente al actual
+        """
+        # Calcular dirección
         dx, dy = x2 - x1, y2 - y1
         distancia = math.sqrt(dx*dx + dy*dy)
         
@@ -240,17 +232,20 @@ class VisualizadorColaCircular:
             return
             
         # Puntos ajustados para que conecten en los bordes
-        factor1 = 60 / distancia  # Radio del nodo
-        factor2 = 60 / distancia
+        factor1 = 60 / distancia  # Radio del nodo de origen
+        factor2 = 60 / distancia  # Radio del nodo de destino
         
+        # Punto de origen ajustado (borde del nodo de origen)
         x1_adj = x1 + dx * factor1
         y1_adj = y1 + dy * factor1
+        
+        # Punto de destino ajustado (borde del nodo de destino)
         x2_adj = x2 - dx * factor2
         y2_adj = y2 - dy * factor2
         
-        # Dibujar línea
+        # Dibujar línea con flecha en el destino (x2_adj, y2_adj)
         self.canvas.create_line(x1_adj, y1_adj, x2_adj, y2_adj, 
-                               arrow=tk.LAST, width=2, fill="red")
+                               arrow=tk.LAST, width=2, fill="red", arrowshape=(8, 10, 5))
     
     def agregar_cliente_manual(self):
         # Ventana simple para agregar cliente
@@ -273,9 +268,12 @@ class VisualizadorColaCircular:
                 id_cliente = int(id_entry.get())
                 transacciones = int(trans_entry.get())
                 mensaje = self.cola_banco.agregar_cliente(id_cliente, transacciones)
-                self.event_queue.put(("nuevo_cliente", mensaje))
-                self.event_queue.put(("actualizar_visualizacion", ""))
+                
+                # Actualizar ambas interfaces
+                self.main_app.agregar_mensaje(f"Nuevo cliente (manual): {mensaje}")
+                self.main_app.actualizar_interfaz_completa()
                 self.dibujar_cola()
+                
                 dialogo.destroy()
             except ValueError:
                 messagebox.showerror("Error", "Por favor ingrese números válidos")
@@ -284,16 +282,18 @@ class VisualizadorColaCircular:
     
     def atender_cliente_manual(self):
         cliente, mensaje = self.cola_banco.atender_cliente()
-        if cliente:
-            self.event_queue.put(("atencion", mensaje))
-            self.event_queue.put(("actualizar_visualizacion", ""))
-            messagebox.showinfo("Atención", mensaje)
-        else:
-            messagebox.showinfo("Atención", mensaje)
+        
+        # Actualizar ambas interfaces
+        self.main_app.agregar_mensaje(f"Atención (manual): {mensaje}")
+        self.main_app.actualizar_interfaz_completa()
         self.dibujar_cola()
+        
+        if not cliente:
+            messagebox.showinfo("Atención", mensaje)
     
     def on_close(self):
         self.running = False
+        self.main_app.ventana_visualizacion = None
         self.root.destroy()
 
 class BancoApp:
@@ -304,7 +304,6 @@ class BancoApp:
         
         self.cola = ColaBancoCircular()
         self.id_cliente = 1
-        self.event_queue = Queue()
         self.running = True
         
         # Frame para controles
@@ -359,23 +358,38 @@ class BancoApp:
         self.cola_tree.pack(fill=tk.BOTH, expand=True)
         
         # Mostrar cajero al inicio
-        self.actualizar_cola()
+        self.actualizar_interfaz_completa()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.process_queue()
         
         # Referencia a la ventana de visualización
         self.ventana_visualizacion = None
     
     def abrir_visualizacion(self):
-        if self.ventana_visualizacion is None or not self.ventana_visualizacion.winfo_exists():
+        if self.ventana_visualizacion is None or not self.ventana_visualizacion_activa():
             nueva_ventana = tk.Toplevel(self.root)
-            self.ventana_visualizacion = VisualizadorColaCircular(nueva_ventana, self.cola, self.event_queue)
-            nueva_ventana.protocol("WM_DELETE_WINDOW", lambda: self.cerrar_visualizacion())
+            self.ventana_visualizacion = VisualizadorColaCircular(nueva_ventana, self.cola, self)
+            nueva_ventana.protocol("WM_DELETE_WINDOW", self.cerrar_visualizacion)
         else:
             self.ventana_visualizacion.root.lift()
     
+    def ventana_visualizacion_activa(self):
+        """Verifica si la ventana de visualización está activa"""
+        return (self.ventana_visualizacion is not None and 
+                self.ventana_visualizacion.root.winfo_exists())
+    
     def cerrar_visualizacion(self):
-        self.ventana_visualizacion = None
+        if self.ventana_visualizacion:
+            self.ventana_visualizacion.on_close()
+    
+    def agregar_mensaje(self, mensaje):
+        """Agrega un mensaje al registro de eventos"""
+        self.mensaje_text.insert(tk.END, f"{mensaje}\n")
+        self.mensaje_text.see(tk.END)
+    
+    def actualizar_interfaz_completa(self):
+        """Actualiza todas las partes de la interfaz principal"""
+        self.actualizar_cola()
+        self.actualizar_estadisticas()
     
     def iniciar_simulacion(self):
         self.running = True
@@ -387,11 +401,14 @@ class BancoApp:
         
         # Thread para atención de clientes
         threading.Thread(target=self.atencion_clientes, daemon=True).start()
+        
+        self.agregar_mensaje("Simulación iniciada")
     
     def detener_simulacion(self):
         self.running = False
         self.start_btn.config(state=tk.NORMAL)
         self.stop_btn.config(state=tk.DISABLED)
+        self.agregar_mensaje("Simulación detenida")
     
     def llegada_clientes(self):
         while self.running:
@@ -400,9 +417,13 @@ class BancoApp:
                 break
                 
             mensaje = self.cola.agregar_cliente(self.id_cliente)
-            self.event_queue.put(("nuevo_cliente", mensaje))
-            self.event_queue.put(("actualizar_visualizacion", ""))
+            self.agregar_mensaje(f"Nuevo cliente: {mensaje}")
+            self.actualizar_interfaz_completa()
             self.id_cliente += 1
+            
+            # Actualizar visualización si está abierta
+            if self.ventana_visualizacion_activa():
+                self.root.after(0, self.ventana_visualizacion.dibujar_cola)
     
     def atencion_clientes(self):
         while self.running:
@@ -411,23 +432,12 @@ class BancoApp:
                 break
                 
             cliente, mensaje = self.cola.atender_cliente()
-            self.event_queue.put(("atencion", mensaje))
-            self.event_queue.put(("actualizar_visualizacion", ""))
-    
-    def process_queue(self):
-        while not self.event_queue.empty():
-            event_type, message = self.event_queue.get()
+            self.agregar_mensaje(f"Atención: {mensaje}")
+            self.actualizar_interfaz_completa()
             
-            if event_type == "nuevo_cliente":
-                self.mensaje_text.insert(tk.END, f"Nuevo cliente: {message}\n")
-            elif event_type == "atencion":
-                self.mensaje_text.insert(tk.END, f"Atención: {message}\n")
-            
-            self.mensaje_text.see(tk.END)
-            self.actualizar_cola()
-            self.actualizar_estadisticas()
-        
-        self.root.after(100, self.process_queue)
+            # Actualizar visualización si está abierta
+            if self.ventana_visualizacion_activa():
+                self.root.after(0, self.ventana_visualizacion.dibujar_cola)
     
     def actualizar_cola(self):
         for item in self.cola_tree.get_children():
@@ -444,6 +454,8 @@ class BancoApp:
     
     def on_close(self):
         self.running = False
+        if self.ventana_visualizacion:
+            self.ventana_visualizacion.running = False
         self.root.destroy()
 
 if __name__ == "__main__":

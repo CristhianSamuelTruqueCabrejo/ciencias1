@@ -1,14 +1,14 @@
 package listadinamica;
 
 import Creacion.Enlace_nodos;
-import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import javax.swing.*;
 
 public class ListaDinamica extends JFrame {
     private final Enlace_nodos lista = new Enlace_nodos();
     private final JTextArea areaLista;
     private final JTextField campoValor;
+    private final JTextField campoValorObjetivo;
 
     public ListaDinamica() {
         setTitle("Lista Dinámica - Ejemplo");
@@ -26,24 +26,37 @@ public class ListaDinamica extends JFrame {
         areaLista.setFont(new Font("Monospaced", Font.PLAIN, 16));
         panel.add(new JScrollPane(areaLista), BorderLayout.CENTER);
 
-        // Panel inferior con botones
-        JPanel controles = new JPanel();
-        controles.setLayout(new FlowLayout());
+        // Panel inferior con dos filas para que todos los controles se vean
+        JPanel panelControles = new JPanel(new GridLayout(2, 1));
+
+        JPanel fila1 = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel fila2 = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
         campoValor = new JTextField(5);
+        campoValorObjetivo = new JTextField(5);
         JButton btnInsertar = new JButton("Insertar");
         JButton btnEliminar = new JButton("Eliminar");
+        JButton btnAnadirDespues = new JButton("Añadir Después");
         JButton btnAleatorio = new JButton("Generar Aleatoria");
         JButton btnMostrar = new JButton("Mostrar");
 
-        controles.add(new JLabel("Valor:"));
-        controles.add(campoValor);
-        controles.add(btnInsertar);
-        controles.add(btnEliminar);
-        controles.add(btnAleatorio);
-        controles.add(btnMostrar);
+        // Fila 1: valor, insertar, eliminar, mostrar
+        fila1.add(new JLabel("Valor:"));
+        fila1.add(campoValor);
+        fila1.add(btnInsertar);
+        fila1.add(btnEliminar);
+        fila1.add(btnMostrar);
 
-        panel.add(controles, BorderLayout.SOUTH);
+        // Fila 2: después de, campo, añadir después, generar aleatoria
+        fila2.add(new JLabel("Después de:"));
+        fila2.add(campoValorObjetivo);
+        fila2.add(btnAnadirDespues);
+        fila2.add(btnAleatorio);
+
+        panelControles.add(fila1);
+        panelControles.add(fila2);
+
+        panel.add(panelControles, BorderLayout.SOUTH);
         add(panel);
 
         // Acciones de botones
@@ -73,6 +86,22 @@ public class ListaDinamica extends JFrame {
         btnAleatorio.addActionListener(e -> {
             lista.generarNodosAleatorios();
             mostrarLista();
+        });
+
+        btnAnadirDespues.addActionListener(e -> {
+            try {
+                int valorNuevo = Integer.parseInt(campoValor.getText());
+                int valorObjetivo = Integer.parseInt(campoValorObjetivo.getText());
+                boolean ok = lista.añadirDespuesDe(valorObjetivo, valorNuevo);
+                if (ok) {
+                    JOptionPane.showMessageDialog(this, "Se añadió " + valorNuevo + " después de " + valorObjetivo);
+                } else {
+                    JOptionPane.showMessageDialog(this, "No se encontró el valor " + valorObjetivo + " en la lista.");
+                }
+                mostrarLista();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Ingrese números válidos en ambos campos.");
+            }
         });
 
         btnMostrar.addActionListener(e -> mostrarLista());

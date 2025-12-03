@@ -36,6 +36,28 @@ public class Enlace_nodos {
         }
     }
 
+    // Añadir un nuevo nodo después del primer nodo cuyo valor sea valorObjetivo
+    // Retorna true si se insertó; false si no se encontró el valorObjetivo
+    public boolean añadirDespuesDe(int valorObjetivo, int nuevoDato) {
+        if (cabeza == null) return false;
+
+        Definicion aux = cabeza;
+        // Buscar el primer nodo que tenga el valor objetivo
+        while (aux != null && aux.num != valorObjetivo) {
+            aux = aux.sig;
+        }
+
+        if (aux == null) {
+            return false; // No se encontró el valor objetivo
+        }
+
+        // Insertar el nuevo nodo después de aux
+        Definicion nuevo = new Definicion(nuevoDato);
+        nuevo.sig = aux.sig;
+        aux.sig = nuevo;
+        return true;
+    }
+
     // Eliminar nodo por valor
     public boolean eliminar(int valor) {
         if (cabeza == null) return false;
